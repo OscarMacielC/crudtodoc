@@ -357,14 +357,22 @@ class ExportarActividades extends Page implements HasForms
     public function getExportActions(): array
     {
         return [
-            Action::make('exportar')
+            Action::make('exportar_pdf')
                 ->label('Generar PDF')
                 ->color('primary')
                 ->icon('heroicon-o-printer')
-                ->action('exportar'),
+                ->url(fn() => url('/exportar-pdf?' . http_build_query(array_filter($this->formData))))
+                ->openUrlInNewTab(false), // true si quieres que abra SIEMPRE en una nueva pestaña
+
+            Action::make('exportar_doc')
+                ->label('Generar Word')
+                ->color('primary')
+                ->icon('heroicon-o-document-text')
+                ->url(fn() => url('/exportar-doc?' . http_build_query(array_filter($this->formData))))
+                ->openUrlInNewTab(false),
         ];
     }
-    public function exportar()
+    public function exportarPdf()
     {
         $data = $this->formData;
 
@@ -395,6 +403,39 @@ class ExportarActividades extends Page implements HasForms
 
         $params = http_build_query(array_filter($data));
         return redirect()->to('/exportar-pdf?' . $params);
+    }
+
+    public function exportarDoc()
+    {
+        $data = $this->formData;
+
+        match ($data['modo_fecha']) {
+            'quincena' => [
+                $data['mes_seleccionado'] = null,
+                $data['fecha_inicio'] = null,
+                $data['fecha_fin'] = null,
+            ],
+            'mes' => [
+                $data['quincena_seleccionada'] = null,
+                $data['fecha_inicio'] = null,
+                $data['fecha_fin'] = null,
+            ],
+            'anual' => [
+                $data['quincena_seleccionada'] = null,
+                $data['mes_seleccionado'] = null,
+                $data['fecha_inicio'] = null,
+                $data['fecha_fin'] = null,
+            ],
+            'personalizado' => [
+                $data['quincena_seleccionada'] = null,
+                $data['mes_seleccionado'] = null,
+                $data['year'] = null,
+            ],
+            default => [],
+        };
+
+        $params = http_build_query(array_filter($data));
+        return redirect()->to('/exportar-doc?' . $params);
     }
 }
 
