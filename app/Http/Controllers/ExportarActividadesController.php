@@ -7,8 +7,7 @@ use Illuminate\Http\Request;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
-use PhpOffice\PhpWord\PhpWord;
-use PhpOffice\PhpWord\IOFactory;
+use PhpOffice\PhpWord\TemplateProcessor;
 
 class ExportarActividadesController extends Controller
 {
@@ -40,29 +39,70 @@ class ExportarActividadesController extends Controller
         $autorUnico = $usuarios->count() === 1 ? $usuarios->first()->name : null;
         $titulo = $this->generarTitulo($data['modo_fecha'], $autorUnico);
 
-        // Crear documento Word
-        $phpWord = new PhpWord();
-        $section = $phpWord->addSection();
-        $section->addTitle($titulo, 1);
-        $section->addText("Rango de fechas: {$data['rangoFechas']}");
-        $section->addTextBreak();
+        // Paths de templates
+        $templateSingle = resource_path('docs/actividades_single.docx');   // sin columna Usuario
+        $templateMultiple = resource_path('docs/actividades_multiple.docx'); // con columna Usuario
+        $templatePath = $autorUnico ? $templateSingle : $templateMultiple;
 
-        foreach ($actividades as $actividad) {
-            $section->addText(
-                $actividad->fecha . ' - ' . $actividad->descripcion .
-                ' (' . $actividad->user->name . ')'
-            );
+        if (!file_exists($templatePath)) {
+            abort(404, 'No se encontró el template: ' . $templatePath);
         }
 
-        $fileName = 'reporte-actividades.docx';
-        $tempFile = tempnam(sys_get_temp_dir(), $fileName);
-        $writer = IOFactory::createWriter($phpWord, 'Word2007');
-        $writer->save($tempFile);
+        $tp = new TemplateProcessor($templatePath);
 
-        return response()->download($tempFile, $fileName)->deleteFileAfterSend(true);
+        // Titulo y rango de fechas
+        $tp->setValue('titulo', e($titulo));
+        $tp->setValue('rango', e($data['rangoFechas'] ?? ''));
+
+        if ($autorUnico) {
+            // SIN columna Usuario → placeholders: pertenencia, tipo, descripcion, fecha
+            $rows = $actividades->map(function ($a) {
+                return [
+                    'pertenencia' => $a->pertenencia_nombre ?? '',
+                    'tipo' => ($a->tipo_actividad_id ?? null) == 1 ? 'Sustantiva' : 'Cotidiana',
+                    'actividad_titulo' => $a->titulo ?? '',
+                    'actividad_descripcion' => $a->descripcion ?? '',
+                    'fecha' => \Carbon\Carbon::parse($a->fecha)->format('d/m/Y'),
+                ];
+            })->all();
+
+            if (count($rows) > 0) {
+                $tp->cloneRowAndSetValues('pertenencia', $rows);
+            } else {
+                $tp->cloneRow('pertenencia', 0);
+            }
+        } else {
+            // CON columna Usuario → placeholders: usuario, pertenencia, tipo, descripcion, fecha
+            $rows = $actividades->map(function ($a) {
+                return [
+                    'usuario' => $a->user->name ?? 'Sin usuario',
+                    'pertenencia' => $a->pertenencia_nombre ?? '',
+                    'tipo' => ($a->tipo_actividad_id ?? null) == 1 ? 'Sustantiva' : 'Cotidiana',
+                    'actividad_titulo' => $a->titulo ?? '',
+                    'actividad_descripcion' => $a->descripcion ?? '',
+                    'fecha' => \Carbon\Carbon::parse($a->fecha)->format('d/m/Y'),
+                ];
+            })->all();
+
+
+            if (count($rows) > 0) {
+                $tp->cloneRowAndSetValues('usuario', $rows);
+            } else {
+                $tp->cloneRow('usuario', 0);
+            }
+        }
+
+        $tmp = tempnam(sys_get_temp_dir(), 'docx');
+        $tp->saveAs($tmp);
+
+        return response()->download(
+            $tmp,
+            'reporte-actividades.docx',
+            ['Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+        )->deleteFileAfterSend(true);
     }
 
-    // 🔹 toda tu lógica de filtros encapsulada en un helper
+
     private function buildExport(Request $request): array
     {
         Carbon::setLocale('es');
