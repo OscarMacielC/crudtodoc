@@ -91,6 +91,7 @@ class ExportarActividades extends Page implements HasForms
                     Toggle::make('incluir_eliminados')
                         ->label('Incluir actividades eliminadas')
                         ->onColor('success')
+                        ->live()
                         ->visible(fn() => auth()->user()->hasRole('admin')),
 
                     Toggle::make('propio')
@@ -283,6 +284,7 @@ class ExportarActividades extends Page implements HasForms
 
                     TextInput::make('year')
                         ->label('Año')
+                        ->live()
                         ->numeric()
                         ->minValue(2000)
                         ->maxValue(now()->year)
@@ -290,21 +292,25 @@ class ExportarActividades extends Page implements HasForms
 
                     Select::make('quincena_seleccionada')
                         ->label('Selecciona una quincena')
+                        ->live()
                         ->options($quincenas)
                         ->visible(fn($get) => $get('modo_fecha') === 'quincena'),
 
                     Select::make('mes_seleccionado')
                         ->label('Selecciona un mes')
+                        ->live()
                         ->options($meses)
                         ->visible(fn($get) => $get('modo_fecha') === 'mes'),
 
                     DatePicker::make('fecha_inicio')
                         ->label('Desde')
+                        ->live()
                         ->default(now()->startOfMonth())
                         ->visible(fn($get) => $get('modo_fecha') === 'personalizado'),
 
                     DatePicker::make('fecha_fin')
                         ->label('Hasta')
+                        ->live()
                         ->default(now())
                         ->visible(fn($get) => $get('modo_fecha') === 'personalizado'),
                 ]),
@@ -372,71 +378,55 @@ class ExportarActividades extends Page implements HasForms
                 ->openUrlInNewTab(false),
         ];
     }
-    public function exportarPdf()
+    private function normalizeFormData(): array
     {
         $data = $this->formData;
 
-        match ($data['modo_fecha']) {
-            'quincena' => [
-                $data['mes_seleccionado'] = null,
-                $data['fecha_inicio'] = null,
-                $data['fecha_fin'] = null,
-            ],
-            'mes' => [
-                $data['quincena_seleccionada'] = null,
-                $data['fecha_inicio'] = null,
-                $data['fecha_fin'] = null,
-            ],
-            'anual' => [
-                $data['quincena_seleccionada'] = null,
-                $data['mes_seleccionado'] = null,
-                $data['fecha_inicio'] = null,
-                $data['fecha_fin'] = null,
-            ],
-            'personalizado' => [
-                $data['quincena_seleccionada'] = null,
-                $data['mes_seleccionado'] = null,
-                $data['year'] = null,
-            ],
-            default => [],
-        };
+        switch ($data['modo_fecha'] ?? null) {
+            case 'quincena':
+                $data['mes_seleccionado'] = null;
+                $data['fecha_inicio'] = null;
+                $data['fecha_fin'] = null;
+                break;
 
-        $params = http_build_query(array_filter($data));
-        return redirect()->to('/exportar-pdf?' . $params);
+            case 'mes':
+                $data['quincena_seleccionada'] = null;
+                $data['fecha_inicio'] = null;
+                $data['fecha_fin'] = null;
+                break;
+
+            case 'anual':
+                $data['quincena_seleccionada'] = null;
+                $data['mes_seleccionado'] = null;
+                $data['fecha_inicio'] = null;
+                $data['fecha_fin'] = null;
+                break;
+
+            case 'personalizado':
+                $data['quincena_seleccionada'] = null;
+                $data['mes_seleccionado'] = null;
+                $data['year'] = null;
+                break;
+        }
+
+        return array_filter($data, fn($v) => $v !== null && $v !== '' && $v !== false);
+    }
+
+    private function buildExportUrl(string $path): string
+    {
+        return url($path . '?' . http_build_query($this->normalizeFormData()));
     }
 
     public function exportarDoc()
     {
-        $data = $this->formData;
-
-        match ($data['modo_fecha']) {
-            'quincena' => [
-                $data['mes_seleccionado'] = null,
-                $data['fecha_inicio'] = null,
-                $data['fecha_fin'] = null,
-            ],
-            'mes' => [
-                $data['quincena_seleccionada'] = null,
-                $data['fecha_inicio'] = null,
-                $data['fecha_fin'] = null,
-            ],
-            'anual' => [
-                $data['quincena_seleccionada'] = null,
-                $data['mes_seleccionado'] = null,
-                $data['fecha_inicio'] = null,
-                $data['fecha_fin'] = null,
-            ],
-            'personalizado' => [
-                $data['quincena_seleccionada'] = null,
-                $data['mes_seleccionado'] = null,
-                $data['year'] = null,
-            ],
-            default => [],
-        };
-
-        $params = http_build_query(array_filter($data));
-        return redirect()->to('/exportar-doc?' . $params);
+        return redirect()->to($this->buildExportUrl('/exportar-doc'));
     }
+
+    public function exportarPdf()
+    {
+        return redirect()->to($this->buildExportUrl('/exportar-pdf'));
+    }
+
 }
 
 
